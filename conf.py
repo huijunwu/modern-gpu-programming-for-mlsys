@@ -57,3 +57,29 @@ html_theme_options = {
     "use_download_button": False,
     "use_fullscreen_button": False,
 }
+
+
+# --- LaTeX / PDF ---
+latex_elements = {
+    "papersize": "a4paper",
+    "pointsize": "11pt",
+    "preamble": r"""
+\setmainfont{DejaVu Serif}
+\setmonofont{DejaVu Sans Mono}
+\setsansfont{DejaVu Sans}
+\usepackage{amsmath,amssymb}
+""",
+    "figure_align": "htbp",
+}
+latex_engine = "xelatex"
+latex_documents = [
+    (
+        root_doc,
+        "modern-gpu-programming-for-mlsys.tex",
+        project,
+        author,
+        "book",
+        False,
+    )
+]
+latex_logo = "static/mlc-logo-with-text-landscape.svg"
