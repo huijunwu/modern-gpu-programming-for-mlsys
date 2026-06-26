@@ -115,7 +115,7 @@ As the transfer progresses, the engine performs complete-tx updates against the 
 
 The consumer then waits on that barrier. Once the wait completes for the expected phase, the shared-memory tile is ready. At that point the MMA path can safely read it.
 
-![TMA load synchronization flow](../img/tma_sync_flow.png)
+![TMA load synchronization flow](../../img/tma_sync_flow.png)
 
 This is the same barrier model used by other asynchronous producer-consumer handoffs. The producer is the TMA engine. The consumer is the MMA path or any other code that reads the shared-memory tile. The barrier is the explicit handoff between them.
 

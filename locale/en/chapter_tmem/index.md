@@ -35,7 +35,7 @@ S[(128, N) : (1@TLane, 1@TCol)]
 
 This says that the tile has 128 rows along the hardware Lane dimension and `N` columns along the hardware Col dimension. In the layout notation, those two dimensions appear as `TLane` and `TCol`. The layout is direct: adjacent rows move along `TLane`, and adjacent columns move along `TCol`. The figure below shows that grid, with hardware Lane running down the 128 rows and hardware Col across the columns.
 
-![TMEM as a 2D grid: TLane rows × TCol columns](../img/tmem_grid.png)
+![TMEM as a 2D grid: TLane rows × TCol columns](../../img/tmem_grid.png)
 
 The main point is that TMEM is part of the tile layout story. It is not just a hidden backing store for the Tensor Core. The kernel has to name the memory, allocate columns from it, and use a layout that matches how `tcgen05` instructions read and write that memory.
 
@@ -63,7 +63,7 @@ The instruction itself comes from a family of load shapes, such as `.16x64b`, `.
 
 The important result is the register fragment layout. For the common epilogue path, lane `l` receives values from TMEM row `l / 4` and two columns. This produces the same kind of per-lane accumulator fragment that earlier generations exposed directly from MMA ({ref}`chap_layout_generations`). That continuity matters. It means the Blackwell epilogue can reuse the same register-level cast and store structure that was already used for Ampere `mma` or Hopper `wgmma`, even though the accumulator lived in TMEM during the compute phase.
 
-![tcgen05.ld / st move the TMEM accumulator to and from registers in the m8n8 fragment (lane l → row l/4, two columns)](../img/tcgen05_ldst.svg)
+![tcgen05.ld / st move the TMEM accumulator to and from registers in the m8n8 fragment (lane l → row l/4, two columns)](../../img/tcgen05_ldst.svg)
 
 The second path is `tcgen05.st`, which stores data from registers back into TMEM. This is the reverse direction of `tcgen05.ld`. It is used when a thread already holds a register fragment and needs to place it into TMEM. For example, some operands or intermediate values may be staged through registers before being written into TMEM for a later `tcgen05` operation.
 

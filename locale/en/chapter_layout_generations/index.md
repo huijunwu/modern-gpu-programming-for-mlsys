@@ -104,7 +104,7 @@ The result lands directly in the MMA fragment. For the basic 8 by 8 case, lane `
 
 The `.trans` form transposes each 8 by 8 matrix as it loads. This is used when the operand is stored in the opposite orientation from the one the MMA instruction expects.
 
-![ldmatrix loads an 8x8 shared memory tile into the warp register fragment; the reverse direction on Ampere uses ordinary stores, and a dedicated stmatrix instruction appears later on Hopper](../img/ldstmatrix.svg)
+![ldmatrix loads an 8x8 shared memory tile into the warp register fragment; the reverse direction on Ampere uses ordinary stores, and a dedicated stmatrix instruction appears later on Hopper](../../img/ldstmatrix.svg)
 
 ## Writing the Ampere Fragment Back
 
@@ -140,7 +140,7 @@ The logical tile is unchanged. The physical placement in shared memory is permut
 
 On Ampere, this swizzle is usually expressed through hand-written shared memory index math. Later generations make it part of the descriptor format used by the hardware engines.
 
-![On a plain row-major tile a row write spreads across banks while a column read collides on one bank; the XOR swizzle scatters the column read across banks without giving up the coalesced row write](../img/swizzle_conflict.svg)
+![On a plain row-major tile a row write spreads across banks while a column read collides on one bank; the XOR swizzle scatters the column read across banks without giving up the coalesced row write](../../img/swizzle_conflict.svg)
 
 ## Hopper: `wgmma`, Shared Memory Descriptors, and Swizzle Formats
 
@@ -181,7 +181,7 @@ The kernel still has to place the bytes correctly. TMA usually fills the shared 
 
 This is the main shift from Ampere. The swizzle is no longer only hidden inside hand-written shared memory indexing. Hopper makes it a first-class descriptor format. The TMA load that writes the tile and the `wgmma` instruction that reads the tile can both name the same format.
 
-![A Hopper shared memory matrix descriptor maps operand coordinates into swizzled shared memory atoms: the descriptor strides choose the atom, and the swizzle chooses the byte position inside the atom](../img/smem_descriptor.svg)
+![A Hopper shared memory matrix descriptor maps operand coordinates into swizzled shared memory atoms: the descriptor strides choose the atom, and the swizzle chooses the byte position inside the atom](../../img/smem_descriptor.svg)
 
 ## Hopper Output Still Uses Registers
 
@@ -257,7 +257,7 @@ There is also byte packing inside the 32-bit `TCol` cells. The packing depends o
 4X: four K-block scale values are packed
 ```
 
-![scale_vec byte packing: 1X broadcasts one scale across the 4-byte cell; 2X packs two scales, each duplicated; 4X packs four K-block scales](../img/sf_scale_vec.svg)
+![scale_vec byte packing: 1X broadcasts one scale across the 4-byte cell; 2X packs two scales, each duplicated; 4X packs four K-block scales](../../img/sf_scale_vec.svg)
 
 This packing has no direct Ampere or Hopper analogue because those generations do not have TMEM scale-factor operands for `tcgen05` block-scaled MMA.
 

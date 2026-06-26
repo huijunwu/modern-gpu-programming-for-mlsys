@@ -1,4 +1,4 @@
-(chap_intro_tirx)=
+(chap_tirx_primer)=
 # TIRx Overview
 
 :::{admonition} Overview

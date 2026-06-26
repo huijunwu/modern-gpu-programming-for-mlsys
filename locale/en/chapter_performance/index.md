@@ -70,7 +70,7 @@ A kernel above that arithmetic intensity can be compute-bound. At that point, me
 
 The useful part of the roofline model is not the plot itself. The useful part is that it tells the programmer which resource is binding. A memory-bound kernel does not become fast because its math instructions are slightly better. A compute-bound kernel does not become fast because it saves a few irrelevant bytes. The first step is to know which side of the ridge the kernel is on.
 
-![A B200 roofline with example workloads, showing the memory roof, the compute roof, and the ridge point](../img/roofline.png)
+![A B200 roofline with example workloads, showing the memory roof, the compute roof, and the ridge point](../../img/roofline.png)
 
 ## Arithmetic Intensity of Common Workloads
 
@@ -179,7 +179,7 @@ After that first jump, the main improvements come from overlap and scheduling. T
 
 There is also no rule that every intermediate step must be faster by itself. A step such as warp specialization may temporarily spend resources on a structure that does not immediately improve the number. It can still be the right step if it enables later overlap that the simpler structure could not express.
 
-![The GEMM optimization journey on B200: measured points from a synchronous tiled baseline through TMA, warp specialization, CTA clusters, and multi-consumer execution](../img/gemm_perf.png)
+![The GEMM optimization journey on B200: measured points from a synchronous tiled baseline through TMA, warp specialization, CTA clusters, and multi-consumer execution](../../img/gemm_perf.png)
 
 ## Overlap Is the Main Lever
 

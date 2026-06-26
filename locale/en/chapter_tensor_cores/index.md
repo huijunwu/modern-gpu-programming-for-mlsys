@@ -70,7 +70,7 @@ This is the simplest case. One CTA computes a 128-row tile. TMEM also has 128 La
 
 The result fills 128 Lane rows by N Col columns. This is the baseline picture. The CTA owns A and B in SMEM, and it owns the full accumulator tile in its TMEM.
 
-![cta_group::1, M=128: row m maps directly to TMEM Lane m](../img/mma_cg1_m128.svg)
+![cta_group::1, M=128: row m maps directly to TMEM Lane m](../../img/mma_cg1_m128.svg)
 
 ### `cta_group::1`, `M = 64`
 
@@ -82,7 +82,7 @@ This leaves gaps at lanes 16 through 31, 48 through 63, 80 through 95, and 112 t
 
 The N dimension still maps to TMEM columns. The unusual part is only the placement of M rows across Lane.
 
-![cta_group::1, M=64: four 16-row runs at a Lane stride of 32, leaving space for another aligned M=64 tile](../img/mma_cg1_m64.svg)
+![cta_group::1, M=64: four 16-row runs at a Lane stride of 32, leaving space for another aligned M=64 tile](../../img/mma_cg1_m64.svg)
 
 ### `cta_group::2`, `M = 256`
 
@@ -94,7 +94,7 @@ Each CTA also supplies the part of A that corresponds to its M rows. B is availa
 
 This is the mode used by the two-CTA cluster GEMM in {ref}`chap_gemm_advanced`.
 
-![cta_group::2, M=256: M split contiguously across two CTAs, 128 rows per CTA](../img/mma_cg2_m256.svg)
+![cta_group::2, M=256: M split contiguously across two CTAs, 128 rows per CTA](../../img/mma_cg2_m256.svg)
 
 ### `cta_group::2`, `M = 128`
 
@@ -104,7 +104,7 @@ The remaining lane capacity is used to pack the N dimension. Inside each CTA, on
 
 So the split has two parts. M is split across the CTA pair, with 64 rows per CTA. N is then split within each CTA across the lower and upper halves of the TMEM Lane rows.
 
-![cta_group::2, M=128: 64 M rows per CTA, with the two halves of N stacked across the lower and upper Lane halves](../img/mma_cg2_m128.svg)
+![cta_group::2, M=128: 64 M rows per CTA, with the two halves of N stacked across the lower and upper Lane halves](../../img/mma_cg2_m128.svg)
 
 Across these modes, the principle is the same. `tcgen05.mma` computes a logical accumulator tile, but that tile must be placed into the physical 128 Lane by up to 512 Col TMEM space. The mode and M shape determine that placement. The rest of the kernel has to use the same mapping when it later reads the accumulator back out.
 
@@ -176,7 +176,7 @@ SFB scales B. Since both CTAs multiply against the same B tile, SFB has to be vi
 
 This is the source of the common loading pattern in block-scaled cluster GEMM. SFA is loaded per CTA, using the mask for the CTA's own M slice. SFB is broadcast to the pair, because both CTAs need the same N-side scale factors.
 
-![Block-scaled MMA placement: A and B packed in SMEM; SFA, SFB, and C in TMEM, with SFA split by M across CTAs and SFB multicast across the CTA pair](../img/mma_block_scaled.svg)
+![Block-scaled MMA placement: A and B packed in SMEM; SFA, SFB, and C in TMEM, with SFA split by M across CTAs and SFB multicast across the CTA pair](../../img/mma_block_scaled.svg)
 
 ## Keeping the MMA Contracts Matched
 

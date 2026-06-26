@@ -20,7 +20,7 @@ Blackwell 对最后一部分做出重大改变。`tcgen05` 的 accumulator 不�
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe src="../demo/tcgen05_intro.html" title="tcgen05 and Tensor Memory" loading="lazy"
+<iframe src="../../_extra/demo/tcgen05_intro.html" title="tcgen05 and Tensor Memory" loading="lazy"
         style="width:100%; min-width:1320px; height:680px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 ```
@@ -70,7 +70,7 @@ Blackwell 打破了那个 link。`tcgen05.mma` 将其 accumulator 写入 TMEM，
 
 result 填充 128 Lane row × N Col column。这是 baseline picture。CTA 在 SMEM 中拥有 A 和 B，在其 TMEM 中拥有完整 accumulator tile。
 
-![cta_group::1, M=128: row m 直接映射到 TMEM Lane m](../img/mma_cg1_m128.svg)
+![cta_group::1, M=128: row m 直接映射到 TMEM Lane m](../../../img/mma_cg1_m128.svg)
 
 ### `cta_group::1`，`M = 64`
 
@@ -82,7 +82,7 @@ row 0 到 15 去往 lane 0 到 15。row 16 到 31 去往 lane 32 到 47。row 32
 
 N dimension 仍映射到 TMEM column。unusual 部分仅是 M row 在 Lane 上的 placement。
 
-![cta_group::1, M=64: four 16-row run 在 Lane stride 32，为另一个 aligned M=64 tile 留出空间](../img/mma_cg1_m64.svg)
+![cta_group::1, M=64: four 16-row run 在 Lane stride 32，为另一个 aligned M=64 tile 留出空间](../../../img/mma_cg1_m64.svg)
 
 ### `cta_group::2`，`M = 256`
 
@@ -94,7 +94,7 @@ N dimension 仍映射到 TMEM column。unusual 部分仅是 M row 在 Lane 上�
 
 这是 {ref}`chap_gemm_advanced` 中 two-CTA cluster GEMM 使用的 mode。
 
-![cta_group::2, M=256: M contiguously split 到两个 CTA，每 CTA 128 row](../img/mma_cg2_m256.svg)
+![cta_group::2, M=256: M contiguously split 到两个 CTA，每 CTA 128 row](../../../img/mma_cg2_m256.svg)
 
 ### `cta_group::2`，`M = 128`
 
@@ -104,7 +104,7 @@ remaining lane capacity 用于 pack N dimension。在每个 CTA 内部，N 的�
 
 因此 split 有两个部分。M 在 CTA pair 间分割，每 CTA 64 row。然后 N 在每个 CTA 内在 TMEM Lane row 的下半和上半间分割。
 
-![cta_group::2, M=128: 每 CTA 64 M row，两半 N 在 lower 和 upper Lane half 上 stack](../img/mma_cg2_m128.svg)
+![cta_group::2, M=128: 每 CTA 64 M row，两半 N 在 lower 和 upper Lane half 上 stack](../../../img/mma_cg2_m128.svg)
 
 在这些 mode 中，principle 相同。`tcgen05.mma` 计算一个 logical accumulator tile，但那个 tile 必须放置到物理 128 Lane × 最多 512 Col TMEM space。mode 和 M shape 决定那个 placement。kernel 的其余部分在后来读取 accumulator 时必须使用相同 mapping。
 
@@ -176,7 +176,7 @@ SFB scale B。由于两个 CTA 都乘以相同 B tile，SFB 必须对两个 CTA 
 
 这是 block-scaled cluster GEMM 中 common loading pattern 的来源。SFA per CTA load，使用 CTA 自己 M slice 的 mask。SFB broadcast 到 pair，因为两个 CTA 都需要相同 N-side scale factor。
 
-![Block-scaled MMA placement: A 和 B pack 在 SMEM；SFA、SFB 和 C 在 TMEM，SFA 按 M 在 CTA 间 split 且 SFB 在 CTA pair 间 multicast](../img/mma_block_scaled.svg)
+![Block-scaled MMA placement: A 和 B pack 在 SMEM；SFA、SFB 和 C 在 TMEM，SFA 按 M 在 CTA 间 split 且 SFB 在 CTA pair 间 multicast](../../../img/mma_block_scaled.svg)
 
 ## Keeping the MMA Contract 匹配
 

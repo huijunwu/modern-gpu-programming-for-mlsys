@@ -23,7 +23,7 @@ barrier 不是一 shot flag。它携带 phase bit，每 barrier 完成一轮 arr
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe src="../demo/mbarrier_mechanism.html" title="mbarrier data structure and APIs" loading="lazy"
+<iframe src="../../_extra/demo/mbarrier_mechanism.html" title="mbarrier data structure and APIs" loading="lazy"
         style="width:100%; min-width:1320px; height:620px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 ```
@@ -53,7 +53,7 @@ phase bit 是使那个 reuse safe 的原因。
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe src="../demo/phase_tracking.html" title="mbarrier phase tracking" loading="lazy"
+<iframe src="../../_extra/demo/phase_tracking.html" title="mbarrier phase tracking" loading="lazy"
         style="width:100%; min-width:1320px; height:640px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 ```
@@ -83,7 +83,7 @@ phase bit 是使那个 reuse safe 的原因。
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe src="../demo/mbarrier_tma_timeline.html" title="mbarrier signalling TMA completion" loading="lazy"
+<iframe src="../../_extra/demo/mbarrier_tma_timeline.html" title="mbarrier signalling TMA completion" loading="lazy"
         style="width:100%; min-width:1320px; height:700px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 ```

@@ -70,7 +70,7 @@ arithmetic intensity 高于该值的 kernel 可以是 compute-bound。在那一�
 
 roofline model 有用的部分不是 plot 本身。有用的部分在于它告诉 programmer 哪个资源是 binding 的。memory-bound kernel 不会因为其 math instruction 略微改善而变快。compute-bound kernel 不会因为节省了几个无关紧要的 byte 而变快。第一步是知道 kernel 在 ridge 的哪一侧。
 
-![一个 B200 roofline，展示 example workload，包括 memory roof、compute roof 和 ridge point](../img/roofline.png)
+![一个 B200 roofline，展示 example workload，包括 memory roof、compute roof 和 ridge point](../../../img/roofline.png)
 
 ## Common Workload 的 Arithmetic Intensity
 
@@ -179,7 +179,7 @@ GEMM ladder 中第一个可测量的大幅跃升，是从 thread-copy tiled 路�
 
 也没有规则要求每个 intermediate step 必须各自更快。像 warp specialization 这样的步骤可能会暂时将资源花费在一个不立即改善数字的结构上。如果它启用的是更简单结构无法表达的后续 overlap，它仍然可以是正确的步骤。
 
-![B200 上的 GEMM 优化旅程：从同步 tiled baseline 到 TMA、warp specialization、CTA cluster 和 multi-consumer execution 的测量点](../img/gemm_perf.png)
+![B200 上的 GEMM 优化旅程：从同步 tiled baseline 到 TMA、warp specialization、CTA cluster 和 multi-consumer execution 的测量点](../../../img/gemm_perf.png)
 
 ## Overlap 是主要的杠杆
 

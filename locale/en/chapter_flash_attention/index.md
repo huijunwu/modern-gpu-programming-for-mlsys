@@ -281,7 +281,7 @@ All of `S`, `P`, and `O` have to share one `128 x 512` TMEM allocation, and the 
 The figure below shows that packing directly: score slots, numerator slots, and output slots all
 share one TMEM allocation, so the barrier protocol is what makes the reuse legal.
 
-![TMEM Layout](../img/tmem_layout_v3.png)
+![TMEM Layout](../../img/tmem_layout_v3.png)
 
 The figure reads as a set of tile slots:
 
@@ -330,7 +330,7 @@ Everything not in that list is pipeline bookkeeping: barriers that release an SM
 The next figure collapses those handoffs into the exact readiness gates for the two MMA phases:
 what the score MMA waits on, and what the value MMA must wait on before it can accumulate.
 
-![Flash Attention 4 MMA Input Gates](../img/flash_attention_main_handoff.png)
+![Flash Attention 4 MMA Input Gates](../../img/flash_attention_main_handoff.png)
 
 Read this diagram as a set of correctness gates rather than a schedule. It answers "what must be true before this MMA may fire," and says nothing about timing. The score MMA waits for Q and K in SMEM, then produces `S`. The value MMA waits on three things at once: V in SMEM, the `P` tile from softmax, and an `O` slot that WG2 has either released or rescaled. The softmax-to-value gate is split for the reason we already met: the value MMA may begin once the first 96 columns of `P` are in place, and `p_ready_2` releases the final 32.
 
@@ -339,7 +339,7 @@ There is one handoff that does not fit the tile-readiness mold: the softmax-to-c
 The figure below zooms in on that mailbox handshake, which is why this one barrier pair should be
 read as a scalar producer-consumer channel rather than as a tile-ready gate.
 
-![Flash Attention 4 Softmax Scale-Slot Handshake](../img/flash_attention_softmax_correction.png)
+![Flash Attention 4 Softmax Scale-Slot Handshake](../../img/flash_attention_softmax_correction.png)
 
 Read `softmax_corr.full` and `softmax_corr.empty` as a producer-consumer pair:
 
@@ -403,7 +403,7 @@ There is no single pipeline depth here, because different tile streams move at d
 The figure below switches from correctness gates to a timeline view, showing which roles can be
 active at roughly the same time once those separate rings are in flight.
 
-![Flash Attention 4 Pipeline Structure](../img/flash_attention_pipeline_v2.png)
+![Flash Attention 4 Pipeline Structure](../../img/flash_attention_pipeline_v2.png)
 
 Read this as a timeline rather than a barrier graph. It shows which roles are active at roughly the same moment, whereas the earlier barrier-flow figure is where you go to check the exact producer-consumer waits. Between them, the two figures answer the two different questions we raised at the start of this section.
 

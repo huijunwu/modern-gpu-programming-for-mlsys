@@ -59,7 +59,7 @@ We have seen how a TMA copy is issued; the other half of the story is knowing wh
 
 This is exactly why `cta_sync()` is no longer sufficient. `cta_sync()` waits only for the CTA's own threads and orders only their shared-memory writes; it knows nothing about an in-flight TMA transfer, so it happily returns while the tile is still arriving. The fix is to make completion explicit: for a TMA load, the selected thread first tells the mbarrier how many bytes to expect, and the CTA then waits on *that* mbarrier before any MMA touches the SMEM tile. The figure below traces that handshake end to end.
 
-![TMA Async Load: Synchronization Flow](../img/tma_sync_flow.png)
+![TMA Async Load: Synchronization Flow](../../img/tma_sync_flow.png)
 
 The figure above isolates the load-side handshake: one selected thread launches TMA, the mbarrier
 counts the expected bytes, and MMA waits on the release before reading SMEM. Where it says
@@ -260,7 +260,7 @@ With `PIPE_DEPTH=2`, the kernel allocates two SMEM stages, giving the load path 
 
 Read the figure below as the pipeline structure that the two-stage buffer is meant to enable, not as an exact execution trace of this single-warpgroup kernel. Step 5 builds the ring buffer and prefetches later stages, but the main loop still waits for the current MMA before it issues the next TMA load. Full load/compute overlap arrives in Step 7, when warp specialization gives TMA and MMA separate roles.
 
-![*Pipeline PIPE_DEPTH=2, the target schedule; this single-warpgroup step only prefetches, full overlap arrives with warp specialization in Step 7*](../img/pipe_depth2.png)
+![*Pipeline PIPE_DEPTH=2, the target schedule; this single-warpgroup step only prefetches, full overlap arrives with warp specialization in Step 7*](../../img/pipe_depth2.png)
 
 Once it is primed, the loop alternates through the two stages. Two TMA loads fill both stages up front; after that, the loop waits for the current stage, runs MMA on it, waits for that MMA to finish reading the stage, and then launches the load for `k + PIPE_DEPTH` into the stage that just became reusable. This is not yet a concurrent TMA/MMA schedule, but it establishes the ring-buffer structure that Step 7 will split across producer and consumer roles.
 

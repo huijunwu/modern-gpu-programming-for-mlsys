@@ -46,7 +46,7 @@ The single-warpgroup kernel leaves performance on the table for a simple reason:
 
 Before introducing the roles and barriers, it helps to isolate the scheduling bottleneck that warp specialization removes. The figure below uses a Step-4-style sequential timeline as a compact reference for the pre-specialization kernels in Steps 4-6, then puts it above the Step 7 warp-specialized schedule so the difference in engine utilization is visible at a glance.
 
-![Warp Specialization Timeline](../img/warp_specialization_timeline.png)
+![Warp Specialization Timeline](../../img/warp_specialization_timeline.png)
 
 On top is the pre-specialization single-warpgroup pattern: the same unspecialized thread group owns both the load path and the MMA path, so one engine can easily go idle while the other is active. Steps 5 and 6 improve that baseline with double buffering and persistent scheduling, but they do not yet split loading and compute into independent producer and consumer roles. On the bottom, specialization breaks that turn-taking. The TMA producer prefetches the next tile while the MMA consumer is busy computing, and writeback proceeds on its own. Producer warp 3 issues the next load while consumer warp 0 is still working through the current MMA, so neither engine has to wait on the other. The load/MMA handoff uses two barriers:
 
@@ -893,7 +893,7 @@ Four techniques account for nearly all of the gain:
 
 Plotted at the measured milestones, those same four contributions trace the descent from the synchronous tiled kernel toward the cuBLAS reference. The figure below shows the selected measured points:
 
-![GEMM Optimization Journey](../img/gemm_perf.png)
+![GEMM Optimization Journey](../../img/gemm_perf.png)
 
 Notice that the gains shrink as we go down the list, and there is a structural reason for it rather than any weakening of effort. The early steps go after *memory* bottlenecks (TMA replaces software copies, clusters raise arithmetic intensity), and that is where most of the 70 ms was actually being spent, so those steps pay off the most. By Step 8 the kernel is already within ~10% of cuBLAS (0.104 vs 0.094 ms) and is close to *compute-bound*, which means there is very little memory stall left to hide; Step 9's multi-consumer overlap recovers most of what little remains. A roughly 10% final gain is exactly what to expect near the compute ceiling: it is the diminishing return of a problem that is nearly solved, not the sign of a weak optimization.
 

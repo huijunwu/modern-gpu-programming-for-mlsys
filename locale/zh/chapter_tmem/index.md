@@ -35,7 +35,7 @@ S[(128, N) : (1@TLane, 1@TCol)]
 
 这表示 tile 沿 hardware Lane dimension 有 128 row，沿 hardware Col dimension 有 `N` column。在 layout notation 中，这两个 dimension 显示为 `TLane` 和 `TCol`。layout 是直接的：相邻 row 沿 `TLane` 移动，相邻 column 沿 `TCol` 移动。下图展示了那个 grid，hardware Lane 沿 128 row 向下，hardware Col 沿 column 横跨。
 
-![TMEM 作为 2D grid：TLane row × TCol column](../img/tmem_grid.png)
+![TMEM 作为 2D grid：TLane row × TCol column](../../../img/tmem_grid.png)
 
 主要观点是 TMEM 是 tile layout story 的一部分。它不仅仅是 Tensor Core 的 hidden backing store。kernel 必须 name 那个 memory、从中分配 column，并使用与 `tcgen05` instruction 读写该 memory 的方式匹配的 layout。
 
@@ -63,7 +63,7 @@ instruction 本身来自一个 load shape family，如 `.16x64b`、`.16x128b`、
 
 重要结果是 register fragment layout。对于 common epilogue path，lane `l` 从 TMEM row `l / 4` 和两个 column 接收值。这产生了与早期 generation 直接从 MMA 暴露的相同类型的 per-lane accumulator fragment（{ref}`chap_layout_generations`）。那种连续性很重要。它意味着 Blackwell epilogue 可以复用相同 register-level cast 和 store structure，这些结构已用于 Ampere `mma` 或 Hopper `wgmma`，即使 accumulator 在 compute phase 期间存放在 TMEM 中。
 
-![tcgen05.ld / st 将 TMEM accumulator 移入移出 register，在 m8n8 fragment（lane l → row l/4，两列）](../img/tcgen05_ldst.svg)
+![tcgen05.ld / st 将 TMEM accumulator 移入移出 register，在 m8n8 fragment（lane l → row l/4，两列）](../../../img/tcgen05_ldst.svg)
 
 第二条路径是 `tcgen05.st`，它将 data 从 register 存回 TMEM。这是 `tcgen05.ld` 的反方向。当 thread 已持有 register fragment 并需要将其放入 TMEM 时使用它。例如，某些 operand 或 intermediate value 可能在写入 TMEM 供 later `tcgen05` operation 之前 stage through register。
 

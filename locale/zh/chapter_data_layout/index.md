@@ -62,7 +62,7 @@ logical `(i, j)` 首先变为 `(i//2, i%2, j//4, j%4)`，然后通过 stride。�
 下面的 interactive visualization 展示了 logical matrix index 如何分解为 tile coordinate 然后映射到 physical address。
 
 ```{raw} html
-<iframe src="../demo/tiled_layout.html" title="Tile layout: interactive address computation" loading="lazy"
+<iframe src="../../_extra/demo/tiled_layout.html" title="Tile layout: interactive address computation" loading="lazy"
         style="width:100%; min-width:1320px; height:640px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 ```
 *Interactive: 点击 cell 查看其 tiled index 和 address。*
@@ -82,7 +82,7 @@ S[(8, 16) : (16@m, 1@m)]
 下面的 interactive visualization 展示了 layout 如何如何将 tensor element 分布在 warp lane 和 per-lane register 上，而不是将它们放在 linear memory 中。
 
 ```{raw} html
-<iframe src="../demo/thread_register.html" title="Thread + register layout via named axes" loading="lazy"
+<iframe src="../../_extra/demo/thread_register.html" title="Thread + register layout via named axes" loading="lazy"
         style="width:100%; min-width:1320px; height:640px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 ```
 *Interactive: 一个在 `@laneid` 和 `@reg` 上的 layout；点击 cell 查看哪个 lane/register 持有它。*
@@ -98,7 +98,7 @@ S[(2, 4, 8) : (1@gpuid_y, 8@m, 1@m)] + R[2 : 1@gpuid_x]
 下面的 demo 在一个小型 GPU mesh 上展示了这种 combined partition-and-replication pattern。点击任意 cell 查看哪个 device 持有它，并观察 `@gpuid_x` replication 如何将一个 identical copy 放置到配对的 device 上；按钮在 fully-sharded、shard + replica 和 shard + offset layout 之间切换。
 
 ```{raw} html
-<iframe src="../demo/tile_distributed.html" title="Distributed layout across a GPU mesh" loading="lazy"
+<iframe src="../../_extra/demo/tile_distributed.html" title="Distributed layout across a GPU mesh" loading="lazy"
         style="width:100%; min-width:1320px; height:640px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 ```
 *Interactive: 一个分布在 2×2 GPU mesh 上的 layout；点击 cell 查看哪个 device(s) 持有它。*
@@ -116,7 +116,7 @@ S[(32, …) : (1@TLane, …)] + R[4 : 32@TLane]
 下面的 interactive demo 同时展示了两个步骤：紧凑 pack 到 32 TMEM lane，然后 `warpx4` broadcast 到 128 个 reading lane。
 
 ```{raw} html
-<iframe src="../demo/sf_tmem.html" title="Scale factors in TMEM: packing and warpx4 replication" loading="lazy"
+<iframe src="../../_extra/demo/sf_tmem.html" title="Scale factors in TMEM: packing and warpx4 replication" loading="lazy"
         style="width:100%; min-width:1040px; height:560px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 ```
 *Interactive: 点击 scale factor `SFA[m, sf]`；它 pack 到 TMEM 中 lane `m mod 32`，column `(m // 32)·4 + sf`，然后沿 `TLane` axis broadcast `warpx4` 到四个 lane copy（`l`、`l+32`、`l+64`、`l+96`），每个 warp 一个 32-lane window。*
@@ -136,7 +136,7 @@ swizzle 的 idea 是 permute address mapping，通常将 column index 与 row XO
 第一个下面的 interactive demo 使这一点具体化。点击一个 column index 并观察每个 element 落到哪个 bank：在左侧的 plain row-major tile 中，一个 column 将所有 8 个 element 汇集到单个 bank，因此 read serialize 为 8 个 cycle；在右侧的 XOR-swizzled layout 中，相同 column spread 到 8 个不同 bank 并 single cycle 读取。
 
 ```{raw} html
-<iframe src="../demo/swizzle_8x8.html" title="8x8 XOR swizzle" loading="lazy"
+<iframe src="../../_extra/demo/swizzle_8x8.html" title="8x8 XOR swizzle" loading="lazy"
         style="width:100%; min-width:1320px; height:640px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 ```
 *Interactive: 一个 8×8 tile，plain row-major 中 column 出现 bank conflict，XOR swizzle 后 conflict-free。*
@@ -146,7 +146,7 @@ swizzle 的 idea 是 permute address mapping，通常将 column index 与 row XO
 下面的 interactive demo 展示了那个 specific hardware swizzle `SWIZZLE_128B`，使 repeating segment-by-segment pattern 在我们在 format 间泛化之前可见。
 
 ```{raw} html
-<iframe src="../demo/swizzle_128B.html" title="SWIZZLE_128B layout" loading="lazy"
+<iframe src="../../_extra/demo/swizzle_128B.html" title="SWIZZLE_128B layout" loading="lazy"
         style="width:100%; min-width:1320px; height:640px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 ```
 *Interactive: 128-byte segment 内的 `SWIZZLE_128B` pattern；通过 read cycle 步进，查看 `physical_sector = logical_sector XOR row` 如何将每个 column spread 到不同 bank。*
@@ -156,7 +156,7 @@ swizzle 的 idea 是 permute address mapping，通常将 column index 与 row XO
 最后一个 interactive demo 允许你在这几个 format 之间切换（包括一个 16 B interleaved mode），选择 data type，hover 任意 cell 直接 inspect 一个 atom 内的 element arrangement，这是推理 load/store instruction 期望哪个 swizzle 的恰当 detail level。
 
 ```{raw} html
-<iframe src="../demo/swizzle_atom_general.html" title="Swizzle atom layout per format (128B/64B/32B)" loading="lazy"
+<iframe src="../../_extra/demo/swizzle_atom_general.html" title="Swizzle atom layout per format (128B/64B/32B)" loading="lazy"
         style="width:100%; min-width:1320px; height:640px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 ```
 *Interactive: 选择 swizzle format（和 data type）查看其 atom shape（8 × N B）；hover cell 查看其 element 如何 permute。*
