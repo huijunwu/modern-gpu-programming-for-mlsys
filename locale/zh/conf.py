@@ -36,12 +36,12 @@ exclude_patterns = [
 
 html_theme = "sphinx_book_theme"
 html_title = project
-html_logo = "../../static/mlc-logo-with-text-landscape.svg"
-html_favicon = "../../static/mlc-favicon.ico"
+html_logo = "mlc-logo-with-text-landscape.svg"
+html_favicon = "mlc-favicon.ico"
 html_static_path = ["../../static"]
 html_extra_path = ["../../_extra", "../../img"]
-html_css_files = ["../../static/custom.css", "../../static/demo-embed.css"]
-html_js_files = ["../../static/demo-embed.js", "../../static/lang-switcher.js"]
+html_css_files = ["custom.css", "demo-embed.css"]
+html_js_files = ["demo-embed.js", "lang-switcher.js"]
 html_theme_options = {
     "show_navbar_depth": 1,
     "show_toc_level": 2,
