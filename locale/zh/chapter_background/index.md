@@ -15,7 +15,7 @@
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe src="../../_extra/demo/sm_architecture.html" title="Blackwell SM architecture" loading="lazy"
+<iframe src="../../../../_extra/demo/sm_architecture.html" title="Blackwell SM architecture" loading="lazy"
         style="width:100%; min-width:1320px; height:680px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 ```
@@ -26,7 +26,7 @@
 我们从负责执行工作的 thread 开始。GPU 不会将它那成千上万个 thread 呈现为一个扁平的 pool。相反，它将它们分组到一个嵌套的 hierarchy 中，其原因是合作发生在多个不同的规模上，而每个层级的存在都是为了让其中一个规模上的合作变得廉价。下图展示了 Blackwell 上的 hierarchy；你可以点击每一层来高亮显示它。
 
 ```{raw} html
-<iframe src="../../_extra/demo/thread_hierarchy.html" title="Blackwell thread hierarchy" loading="lazy"
+<iframe src="../../../../_extra/demo/thread_hierarchy.html" title="Blackwell thread hierarchy" loading="lazy"
         style="width:100%; min-width:900px; height:520px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 ```
 *Interactive: 点击一个层级：thread → warp → warpgroup → CTA → cluster → grid。*
@@ -64,7 +64,7 @@ DSMEM 允许一个 CTA 直接寻址和访问 peer CTA 的 shared memory。一个
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe src="../../_extra/demo/cta_cluster.html" title="A 2-CTA cluster sharing distributed shared memory" loading="lazy"
+<iframe src="../../../../_extra/demo/cta_cluster.html" title="A 2-CTA cluster sharing distributed shared memory" loading="lazy"
         style="width:100%; min-width:720px; height:580px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 ```
@@ -87,7 +87,7 @@ cluster 以在 GEMM 章节中反复出现的两种方式来扩展这些 engine�
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe src="../../_extra/demo/pipeline_arch.html" title="Blackwell GEMM data pipeline" loading="lazy"
+<iframe src="../../../../_extra/demo/pipeline_arch.html" title="Blackwell GEMM data pipeline" loading="lazy"
         style="width:100%; min-width:1320px; height:680px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 ```

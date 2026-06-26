@@ -38,7 +38,7 @@ $$\text{TFLOPS} = \frac{2 \times M \times N \times K}{t_{\text{seconds}} \times 
 
 本 tutorial 的每 optimization 归结为 data 存放哪里和如何移动，因此在我们写任何 code 前将那个 map out 是 worth。在核心，Blackwell GEMM kernel 围绕两个 activity 组织：在 memory 间移动 tile 和在它们上 compute。下图追踪 tile 从 input 到 output 接触每 memory：
 
-![*Memory Data Flow*](../../../img/memory_dataflow.png)
+../../../../img/memory_dataflow.png)
 
 上图显示 baseline path 每 later optimization 编辑但从不替换。
 从左到右读：operand tile 首先从 GMEM 移到 SMEM；`tcgen05.mma` 然后
