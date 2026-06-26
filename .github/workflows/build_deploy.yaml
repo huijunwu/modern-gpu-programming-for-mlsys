@@ -31,7 +31,7 @@ jobs:
         run: pip install -r requirements-docs.txt
 
       - name: Build ${{ matrix.lang }} (Sphinx, warnings as errors)
-        run: sphinx-build -b html -D language=${{ matrix.lang }} . _build/html_${{ matrix.lang }} -W --keep-going
+        run: sphinx-build -b html -c locale/${{ matrix.lang }} locale/${{ matrix.lang }} _build/html_${{ matrix.lang }} -W --keep-going
 
       - name: Upload built site
         uses: actions/upload-artifact@v4
@@ -45,10 +45,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./_build/html_${{ matrix.lang }}
-          # English site serves at root, Chinese at /zh/
+          # English at root, Chinese at /zh/
+          destination_dir: ${{ matrix.lang == 'zh' && 'zh' || '' }}
           # https://mlc.ai/modern-gpu-programming-for-mlsys/
           # https://mlc.ai/modern-gpu-programming-for-mlsys/zh/
-          destination_dir: ${{ matrix.lang == 'zh' && 'zh' || '' }}
-          # No custom domain: the site serves at the org default,
-          # https://mlc.ai/modern-gpu-programming-for-mlsys/ . To use a custom domain, add a
-          # `cname:` line here and the matching DNS record.
