@@ -43,6 +43,14 @@ html_extra_path = ["../../_extra", "../../img"]
 html_css_files = ["../../static/custom.css", "../../static/demo-embed.css"]
 html_js_files = ["../../static/demo-embed.js", "../../static/lang-switcher.js"]
 html_theme_options = {
+    # 将页面整体宽度设为 100%（默认通常为 88rem）
+#     "page_width": "100%",
+    # 将主要内容区域宽度设为 100%（默认通常为 75rem）
+#     "content_width": "100%",
+    # 如果你希望保留侧边栏固定宽度，只让内容区域自适应，可以这样组合：
+    "page_width": "100%",
+    "content_width": "auto",  # 让内容自动填满剩余空间
+    "sidebar_width": "18rem", # 侧边栏固定宽度    "show_navbar_depth": 1,
     "show_navbar_depth": 1,
     "show_toc_level": 2,
     "home_page_in_toc": False,
