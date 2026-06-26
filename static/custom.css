@@ -38,3 +38,21 @@ div.admonition.overview > .admonition-title {
 div.admonition.overview > .admonition-title::after {
     color: var(--pst-color-primary);
 }
+
+/* ============================================================
+ * Full-width layout: remove the 88rem cap so the 3-column
+ * layout (left sidebar | main content | right TOC) fills the
+ * entire browser window.
+ * ============================================================ */
+
+/* 1. Remove the page-width cap (default: max-width: 88rem) */
+.bd-container__inner.bd-page-width {
+    max-width: 100% !important;
+    width: 100% !important;
+}
+
+/* 2. Let the article container fill the remaining space
+ *    (after left sidebar + right TOC sidebar) */
+.bd-main .bd-content .bd-article-container {
+    max-width: 100% !important;
+}
