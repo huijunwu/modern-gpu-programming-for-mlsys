@@ -15,6 +15,9 @@ permissions:
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lang: [en, zh]
     steps:
       - uses: actions/checkout@v4
 
@@ -27,21 +30,22 @@ jobs:
       - name: Install doc dependencies
         run: pip install -r requirements-docs.txt
 
-      - name: Build (Sphinx, warnings as errors)
-        run: sphinx-build -b html . _build/html -W --keep-going
+      - name: Build ${{ matrix.lang }} (Sphinx, warnings as errors)
+        run: sphinx-build -b html -c locale/${{ matrix.lang }} locale/${{ matrix.lang }} _build/html_${{ matrix.lang }} -W --keep-going
 
       - name: Upload built site
         uses: actions/upload-artifact@v4
         with:
-          name: html
-          path: _build/html
+          name: html-${{ matrix.lang }}
+          path: _build/html_${{ matrix.lang }}
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./_build/html
-          # No custom domain: the site serves at the org default,
-          # https://mlc.ai/modern-gpu-programming-for-mlsys/ . To use a custom domain, add a
-          # `cname:` line here and the matching DNS record.
+          publish_dir: ./_build/html_${{ matrix.lang }}
+          # English at root, Chinese at /zh/
+          destination_dir: ${{ matrix.lang == 'zh' && 'zh' || '' }}
+          # https://mlc.ai/modern-gpu-programming-for-mlsys/
+          # https://mlc.ai/modern-gpu-programming-for-mlsys/zh/

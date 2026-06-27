@@ -13,6 +13,18 @@ extensions = ["myst_parser", "sphinx_copybutton"]
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 root_doc = "index"
 
+# --- i18n configuration ---
+# Supported languages
+languages = ["en", "zh"]
+
+# Default locale directory
+locale_dirs = ["locale"]
+
+# Sphinx-intl configuration
+gettext_compact = False
+gettext_auto_id = True
+gettext_location = True
+
 myst_enable_extensions = [
     "dollarmath",   # $...$ and $$...$$ math
     "amsmath",      # LaTeX environments
@@ -49,7 +61,7 @@ html_static_path = ["static"]
 # site root, then embedded via <iframe>. See chapter_* for the embeds.
 html_extra_path = ["_extra"]
 html_css_files = ["custom.css", "demo-embed.css"]
-html_js_files = ["demo-embed.js"]
+html_js_files = ["demo-embed.js", "lang-switcher.js"]
 html_theme_options = {
     "show_navbar_depth": 1,
     "show_toc_level": 2,
