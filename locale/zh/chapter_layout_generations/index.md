@@ -98,64 +98,191 @@ ldmatrix.sync.aligned.m8n8.x4.shared.b16
 
 带可选 `.trans` qualifier。
 
-`x1`、`x2`、`x4` 控制每 instruction 移动多少 8 × 8 matrix。`x1` 移动一个 8 × 8 matrix。`x2` 移动两个 8 × 8 matrix，使两个 8 × 8 或一个 8 × 16 matrix 可在一次 load 中 move。`x4` 移动四个 8 × 8 matrix。
+`.x1`、`.x2`、`.x4` form load 一个、两个或四个 8 × 8 matrix。row base address 由 lane 提供。对于 matrix `m` 和 row `r`，base address 来自 lane `m * 8 + r`。这意味着 `.x1` 使用 lane 0 到 7 作为 row address，`.x2` 使用 lane 0 到 15，`.x4` 使用 lane 0 到 31。
 
-`.trans` qualifier 控制是否 transpose load 的 8 × 8 matrix。这对 A 和 B operand 都重要，因为 MMA 期望特定 transpose state。
+result 直接落入 MMA fragment。对于基本 8 × 8 case，lane `l` 接收 Tensor Core 期望的 row 和 column pair。一个 plain loop 的 per-lane `ld.shared` instruction 必须手动重现那个 scatter。`ldmatrix` 作为一条 warp-collective instruction 执行 shared-memory-to-fragment rearrangement。
 
-## Hopper: Shared Memory Descriptor 和 `wgmma`
+`.trans` form 在 load 时 transpose 每个 8 × 8 matrix。这在 operand 以与 MMA instruction 期望相反的 orientation store 时使用。
 
-Hopper 引入 `wgmma`，一个 warpgroup-level MMA instruction。它不消费 register fragment。相反，它从 shared memory 读 operand 通过 matrix descriptor。
+![ldmatrix load 一个 8×8 shared memory tile 到 warp register fragment；Ampere 上 reverse direction 使用普通 store，专用 stmatrix instruction 后来在 Hopper 上出现](../img/ldstmatrix.svg)
 
-descriptor 描述 shared memory 中的 operand layout。它记录 tensor shape、stride、element type、swizzle mode 和 swizzle type。instruction 然后使用 descriptor 从 shared memory load tile 并执行 MMA。
+## 写回 Ampere Fragment
 
-这意味着 kernel 不再需要 `ldmatrix`。operand 留在 shared memory 中，MMA 直接读它。shared memory 不再是 staging area。它是 operand 的 home。
+`mma.sync` 完成后，accumulator 仍是 register fragment。epilogue 必须将那个 fragment 移出。
 
-这简化了 data path：
+在 Ampere 上，没有 `ldmatrix` 的专用 reverse。kernel 使用普通 per-thread store，有时在 store 前用 warp shuffle 或 local rearrangement，将 accumulator 以有用 layout 写入 shared memory 或 global memory。
 
-```text
-SMEM 到 SMEM 通过 wgmma 读
-SMEM 到 register 通过 wgmma 写
-register 到 SMEM 通过普通 store
-```
+这保持 Ampere model 简单但也暴露大量 layout work 给 kernel。input 侧使用 `ldmatrix` 创建 fragment。compute instruction 读和写 register fragment。output 侧由那些 fragment 的普通 store 处理。
 
-accumulator 仍在 register 中，但 operand 现在在 shared memory 中。
+## Ampere 上的 Swizzle
 
-descriptor 的关键 role 是它命名 shared memory swizzle。kernel 必须将 operand tile store 在 shared memory 中为 descriptor 声明的 swizzle。如果 tile 以不同 swizzle store，MMA 读错 value。
+Ampere kernel 已经需要 shared memory swizzle。原因是 shared memory tile 通常以一个 access pattern write 并以另一个 read。
 
-```text
-descriptor.swizzle == SW32_4X4  表示 32-byte swizzle
-descriptor.swizzle == SW64_4X4  表示 64-byte swizzle
-descriptor.swizzle == SW128_4X4 表示 128-byte swizzle
-```
+假设 tile 沿 row 从 global memory fill。row-major layout 使那个 write coalesced 且 bank friendly。但 `ldmatrix` 可能后来以有效沿 column 走或跨 8 × 8 subtile 的 pattern read tile。使用 plain row-major layout，那些 read 可能 stack 到相同 shared memory bank。
 
-## Blackwell: TMEM Accumulator 和 Block-Scaled MMA
-
-Blackwell 保持 shared memory operand 路径但将 accumulator 移到 TMEM。`tcgen05.mma` 从 shared memory 读 A 和 B 并将 accumulator 写入 TMEM。
-
-这意味着 epilogue 必须从 TMEM load accumulator 到 register。`tcgen05.ld` 执行那个 load。
-
-此外，Blackwell 引入 block-scaled MMA。这种 mode 允许 low-precision format，如 `mxfp8` 和 `nvfp4`，使用 block-level scale factor 来扩展 precision。scale factor 存放在 TMEM 中。
-
-这意味着 kernel 必须管理两个 TMEM allocation：accumulator 和 scale factor。
+对于简单 `(8, 64)` float16 tile，一个 row 是：
 
 ```text
-A, B:     global memory 到 SMEM 通过 TMA
-SFA, SFB: global memory 到 SMEM 到 TMEM 通过 tcgen05.cp
-C:        TMEM 通过 tcgen05.mma 写
+64 * 2 bytes = 128 bytes
 ```
 
-accumulator layout 和 scale factor layout 在 TMEM 中不同。accumulator 使用 MMA output mapping。scale factor 使用 compact layout（32 Lane row，`warpx4` broadcast）。
+正好是一个完整 shared memory bank line。沿固定 column 走每 row 前进 128 byte，因此 bank index 重复。八 row 可 collapse 到相同 bank，创建 8-way conflict。
 
-## 两个 Constraint 仍然存在
+改为 plain column-major layout 不解决整个问题。它通常将 conflict 移到另一个 access。row write 变得更差而 column-style read 变得更好。
 
-尽管 layout 跨代际改变，两个 basic memory constraint 仍然存在。
+XOR swizzle 通过使 physical column 依赖于 row 来修复这个问题。一个简单 version 是：
 
-第一个是 global memory coalescing。kernel 必须安排 global memory access 以 minimize transaction。TMA 帮助这个，但它仍要求 descriptor 正确描述 tensor layout。
+```text
+physical_col = logical_col xor row
+```
 
-第二个是 shared memory bank conflict。无论 operand 是加载到 register 还是直接由 Tensor Core 消费，shared memory 的 bank layout 影响 access speed。swizzle 仍然是修复 bank conflict 的主要工具。
+logical tile 不变。shared memory 中的 physical placement permute，使 row-style write 和 Tensor Core read pattern 都能避免 bank conflict。
 
-## 总结
+在 Ampere 上，这个 swizzle 通常通过 hand-written shared memory index math 表达。后来代际使其成为 hardware engine 使用的 descriptor format 的一部分。
 
-Tensor Core operation 在 high-level 上稳定：`D = A B + C`。path 进入和离开 Tensor Core 随代际改变。Ampere 使用 register fragment。Hopper 使用 shared memory descriptor。Blackwell 使用 shared memory operand 和 TMEM accumulator。
+![在 plain row-major tile 上，row write spread across bank 而 column read 在一个 bank 上 collide；XOR swizzle 将 column read scatter across bank 而不放弃 coalesced row write](../img/swizzle_conflict.svg)
 
-layout 是使每个 generation 工作的 contract。kernel 必须将 operand 排列在 hardware 期望的 layout 中。layout notation 是描述那个 contract 的语言。
+## Hopper: `wgmma`、Shared Memory Descriptor 和 Swizzle Format
+
+Hopper 改变 Tensor Core path 的 input 侧。代替要求每个 operand 用 `ldmatrix` load 到 register，Hopper `wgmma` 可直接从 shared memory 读 operand。
+
+B operand 从 shared memory matrix descriptor 读。A operand 可从 shared memory descriptor 或 register 读，给出 `.ss` 和 `.rs` form。
+
+这移除了 SMEM-sourced operand 的显式 `ldmatrix` step。它不移除 layout requirement。Tensor Core 仍期望 operand 以精确 shared memory format store。不同之处是 format 现在通过 matrix descriptor 描述给 hardware。
+
+## Hopper Tensor Core 期望什么
+
+Hopper shared memory matrix descriptor 是 shared memory 中 matrix tile 的 compact description。它告诉 `wgmma` 如何将 logical operand coordinate 转为 shared memory address。
+
+descriptor 包括如以下 field：
+
+```text
+start address
+leading dimension offset
+stride dimension offset
+swizzle mode
+base offset
+```
+
+exact interpretation 取决于 operand major mode。对于 K-major tile，一个 stride 沿 K 前进，另一个沿 M 前进。对于 MN-major tile，角色互换。
+
+swizzle mode 是 shared memory descriptor format 之一，如：
+
+```text
+SWIZZLE_NONE
+SWIZZLE_32B
+SWIZZLE_64B
+SWIZZLE_128B
+```
+
+swizzle mode 决定两件事。它决定 descriptor 使用的 atom shape，它决定在那个 atom 内应用的 XOR permutation。例如，128-byte swizzle mode 将 operand 视为 8-row × 128-byte atom 的 grid，swizzle 在每个 atom 内应用。
+
+kernel 仍必须正确放置 byte。TMA 通常 fill shared memory tile，TMA descriptor 必须使用 `wgmma` descriptor 后来命名的相同 swizzle format。如果 TMA write 128-byte swizzled tile，`wgmma` descriptor 必须将其作为 128-byte swizzled tile read。如果 descriptor 和 data 不一致，Tensor Core 将读 scrambled operand。
+
+这是从 Ampere 的主要 shift。swizzle 不再仅隐藏在 hand-written shared memory indexing 内。Hopper 使其成为 first-class descriptor format。write tile 的 TMA load 和 read tile 的 `wgmma` instruction 都可命名相同 format。
+
+![Hopper shared memory matrix descriptor 将 operand coordinate 映射到 swizzled shared memory atom：descriptor stride 选择 atom，swizzle 选择 atom 内的 byte position](../img/smem_descriptor.svg)
+
+## Hopper Output 仍使用 Register
+
+Hopper 改变 input path，但 accumulator 仍在 register 中。
+
+`wgmma` instruction 将 accumulator 写入 per-thread register fragment。exact fragment size 和 register count 取决于 instruction shape，如 `m64nNk16`，其中 N 改变 accumulator register 数量。但 basic idea 与 Ampere 相同：epilogue 消费 register fragment。
+
+因此 Hopper 有 mixed layout model。input operand 可直接来自 shared memory descriptor，swizzle 由 hardware 描述。output accumulator 仍是 register layout 问题。
+
+Blackwell 改变那个 output 侧。
+
+## Blackwell: `tcgen05` 和 TMEM
+
+Blackwell 对 data operand 保持 shared memory descriptor idea。A 和 B 仍在 shared memory 中以 Tensor Core 期望的 layout 准备。某些 mode 也可从 TMEM 读 A operand。
+
+major change 是 accumulator。`tcgen05.mma` 将 accumulator 写入 Tensor Memory（TMEM），而不是将其保持为 long-lived register fragment。在 compute phase 期间，accumulator 留在 TMEM 中。epilogue 后来使用 `tcgen05.ld` 将其 load 回 register。
+
+这将 output layout 问题从 register 移到 TMEM。kernel 必须 allocate TMEM、选择正确 TMEM layout、等待 MMA completion，然后用 matching `tcgen05.ld` path 恢复 accumulator fragment 供 epilogue 使用。
+
+`cta_group::1` 和 `cta_group::2` 如何在单个或多个 CTA 间 split accumulator 的 detail 在 {ref}`chap_tensor_cores` 中覆盖。与之前代际最不同的 layout 是 block-scaled scale-factor layout。
+
+## TMEM 中的 Scale Factor Layout
+
+block-scaled MMA mode，如 `mxfp8` 和 `nvfp4`，添加 scale-factor operand。除 A 和 B 外，MMA 读：
+
+```text
+SFA(M, SFK)
+SFB(N, SFK)
+```
+
+其中 `SFK` 是 K scale block 数量。
+
+data operand A 和 B 在 shared memory 中。scale factor 在 TMEM 中。这给它们不同的 movement path。
+
+TMA 从 global memory load 到 shared memory。它不直接 load 到 TMEM。因此 scale factor 通常分两步移动：
+
+```text
+global memory 到 shared memory 用 TMA
+shared memory 到 TMEM 用 tcgen05.cp
+```
+
+只有在那个 copy 之后，scale factor 才在 `tcgen05.mma` 期望读它们的 memory space 中。
+
+TMEM scale-factor layout 使用 TMEM hardware coordinate Lane 和 Col。在 TIRx layout notation 中，那些 axis 写为 `TLane` 和 `TCol`。
+
+128-row scale vector 被 compact 到 32-lane group 然后在 TMEM 的四个 32-lane window 间 replicate。在 layout notation 中，core pattern 是：
+
+```text
+S[(32, sf_per_mma) : (1@TLane, 1@TCol)] + R[4 : 32@TLane]
+```
+
+shard 放置 base 32-row group：
+
+```text
+TLane = r
+TCol  = s
+```
+
+replica term 在 lane offset 0、32、64 和 96 添加 copy：
+
+```text
+TLane = r + 32 * q, 其中 q in {0, 1, 2, 3}
+TCol  = s
+```
+
+这是 `warpx4` broadcast pattern。相同 compact scale-factor group 在完整 128-lane TMEM space 中可见。
+
+32-bit `TCol` cell 内还有 byte packing。packing 取决于 `scale_vec` mode：
+
+```text
+1X: 一个 scale value broadcast 跨 32-bit cell
+2X: 两个 scale value pack，每个 duplicate
+4X: 四个 K-block scale value pack
+```
+
+![scale_vec byte packing：1X 将单个 scale broadcast 跨 4-byte cell；2X pack 两个 scale，每个 duplicate；4X pack 四个 K-block scale](../img/sf_scale_vec.svg)
+
+这种 packing 在 Ampere 或 Hopper 上没有直接对应物，因为那些代际没有 TMEM scale-factor operand 用于 `tcgen05` block-scaled MMA。
+
+在 `cta_group::2` 中，scale factor 跟随它们 scale 的 data。SFA scale A，因此它按 M 在两个 CTA 间 split，匹配每个 CTA 拥有的 A row。SFB scale B，B 由计算的两个 CTA half 共享，因此 SFB multicast 到两个 CTA（{ref}`chap_tensor_cores`）。
+
+## 反复出现的 Fragment
+
+尽管周围 memory path 改变，一个 structure 不断返回：m8n8-style register fragment。
+
+在 Ampere 上，`ldmatrix` 构建那个 fragment 供 `mma.sync` read。
+
+在 Hopper 上，`wgmma` 将 accumulator 写为 register fragment 供 epilogue 使用。
+
+在 Blackwell 上，accumulator 在 compute 期间留在 TMEM 中，但 `tcgen05.ld` 在 epilogue 处理和 store 之前将其 load 回 register fragment（{ref}`chap_tmem`）。
+
+因此 fragment 没有消失。它的 role 改变。早期代际在整个 compute phase 将 accumulator 保持在那里。Blackwell 主要在 TMEM 和 epilogue 的 boundary 使用它。
+
+## 贯穿线
+
+在 Ampere 上，kernel 显式构建 Tensor Core register fragment。shared memory swizzle 主要通过 index math 是 kernel 的 responsibility。
+
+在 Hopper 上，Tensor Core 可通过 matrix descriptor 直接从 shared memory 读 operand。swizzle 成为 TMA 和 `wgmma` 共享的 named descriptor format。
+
+在 Blackwell 上，input 侧仍使用 shared memory operand，但 accumulator 移到 TMEM。block-scaled MMA 还添加必须 stage 到 TMEM 的 scale-factor operand。
+
+descriptor 不移除 layout work。它们使 contract explicit。kernel 仍必须确保 data movement path、memory layout 和 Tensor Core instruction 都一致。write swizzled SMEM tile 的 TMA descriptor、read 那个 tile 的 MMA descriptor 和附加到 buffer 的 layout 必须都描述相同 physical arrangement。
+
+如果那些 pieces 中任何一个不一致，hardware 仍会运行。但它将读错 byte 或慢速读它们。这就是为什么 layout 不是 Tensor Core kernel 周围的 decoration。它是 instruction interface 的一部分。
