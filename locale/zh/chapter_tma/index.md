@@ -20,7 +20,7 @@ TMA 还处理 part 的 layout problem。Tensor Core 不仅需要 shared memory �
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe src="../../../../_extra/demo/tma_intro.html" title="TMA: the Tensor Memory Accelerator" loading="lazy"
+<iframe src="../demo/tma_intro.html" title="TMA: the Tensor Memory Accelerator" loading="lazy"
         style="width:100%; min-width:1320px; height:680px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 ```
@@ -62,7 +62,7 @@ swizzle mode 是 TMA descriptor 的一部分。一旦 descriptor 设置好，iss
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe class="demo-tma3d" src="../../../../_extra/demo/tma_3d.html" title="Tiling and swizzling with 3D TMA" loading="lazy"
+<iframe class="demo-tma3d" src="../demo/tma_3d.html" title="Tiling and swizzling with 3D TMA" loading="lazy"
         style="width:100%; min-width:1320px; height:640px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 ```
@@ -72,7 +72,7 @@ swizzle mode 是 TMA descriptor 的一部分。一旦 descriptor 设置好，iss
 
 ```{raw} html
 <div style="overflow-x:auto;">
-<iframe class="demo-tma3d" src="../../../../_extra/demo/tiling_constraint.html" title="Swizzle imposes a tiling constraint" loading="lazy"
+<iframe class="demo-tma3d" src="../demo/tiling_constraint.html" title="Swizzle imposes a tiling constraint" loading="lazy"
         style="width:100%; min-width:1320px; height:640px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
 </div>
 <script>
@@ -115,7 +115,7 @@ mbarrier.arrive.expect_tx(bytes)
 
 consumer 然后等待那个 barrier。一旦 wait 为 expected phase 完成，shared memory tile 就 ready。此时 MMA path 可以安全读取它。
 
-../../../../img/tma_sync_flow.png)
+![TMA load synchronization flow](../img/tma_sync_flow.png)
 
 这是与其他 asynchronous producer-consumer handoff 相同的 barrier model。producer 是 TMA engine。consumer 是 MMA path 或任何读取 shared memory tile 的其他 code。barrier 是它们之间的 explicit handoff。
 
