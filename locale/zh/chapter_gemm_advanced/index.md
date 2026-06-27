@@ -311,49 +311,105 @@ Step 7 可以接受一个令人愉快的简单 epilogue。仅有 `BLK_N=128` 列
 ---
 
 (chap_cta_cluster)=
-## Step 8: CTA Cluster
+## Step 8: 2-CTA Cluster
 
-Step 7 通过让 warp 专化为不同角色提高了 intra-CTA 并行度。但 cooperative group 仍然限制在一个 CTA 内。Step 8 将两个 CTA 组成 cluster，使它们共享一个 MMA tile。这提高了 B tile 的 reuse，因为两个 CTA 可以消费同一个 B tile。
+Step 7 让 engine 重叠了，但每个 CTA 仍然孤立地计算自己的 128×128 tile，重新加载邻居无法借用的 operand。Step 8 打破了这种隔离。两个 CTA 加入 cluster 并获得互相访问对方 shared memory 的能力，因此单个 cooperative `tcgen05` MMA 产生一个跨越两个 CTA 的 256×256 tile，一次 B 的 load 现在提供两倍的 MMA work。如前所述，M=N=K=4096。
 
-> **这个 step 改变了什么：Scope**
-> - Scope：一个 CTA 变为 `CTA_GROUP=2`，两个 CTA 合作完成一个 256×256 MMA tile。
-> - Layout：B tile 在两个 CTA 间共享；A tile 和 output tile 各占一半。
-> - Dispatch：不变，TMA load、`tcgen05` MMA。
+> **这个 step 改变了什么：Scope + Layout + Dispatch**
+> - Scope：协作范围现在跨越 cluster 中的两个 CTA，而不是一个。
+> - Layout：operand tile 分布在两个 CTA 的 SMEM 中；CTA 0 拥有共享的 completion barrier（`remote_view`）。
+> - Dispatch：MMA 获得 `cta_group` / `cta_mask` 使 `tcgen05` 作为 2-CTA cooperative op 运行。
 
 **主题。**
 
-- `cta_group::2` 中的 cooperative CTA
+- CTA cluster：多个 CTA 合作完成更大的 tile
 
-- 跨 CTA 的 TMA 和 MMA 调度
+- 通过 `map_shared_rank` 跨 CTA 访问 SMEM
 
-- 跨 CTA 的 barrier 同步
+- `cta_group=2` 用于 256x256 cluster tile 上的 cooperative MMA
 
-### 为什么 Cluster
+- 使用 `cta_mask` 跨 CTA barrier signal
 
-在 Step 7 中，每个 CTA 独立处理 128×128 的 output tile。B tile 在 K 维度上被 tile，但每个 CTA 加载自己的副本。当相邻 CTA 处理相邻的 N 条带时，它们加载相同的 B tile 到各自的 SMEM 中。这浪费了 memory bandwidth。
 
-cluster 通过让两个 CTA 共享一个 B tile 来消除这一冗余。两个 CTA 各加载自己的 A tile，但只加载一个 B tile 供两者使用。这使 B 的 load cost 减半。
+### Cluster Tile Shape
 
-cluster 还允许更大的 MMA tile。Step 7 的 MMA 是 128×128，Step 8 变为 128×256（M 方向 128，N 方向 256），因为两个 CTA 的 B tile 在 SMEM 中相邻。更大的 MMA tile 意味着更高的 arithmetic intensity 和更好的 Tensor Core 利用率。
+整个优化基于一个 hardware capability：使用 `cta_group=2`，MMA 被允许读取 *两个* CTA 预存的 operand tile，而不仅仅是它所在的那个。每个 CTA 加载 stored B 的一个 128-row slice，转置后变为 128 个 logical output column，cooperative MMA 将两个 slice 拼接回一个 operand。下图追踪了两个 CTA 的 A 和 B slice 如何组合成单个 256×256 cluster tile：
 
-### Cluster Layout
+```{raw} html
+<div style="overflow-x:auto;">
+<iframe src="../demo/cta_cluster.html" title="A 2-CTA cluster: cooperative MMA via cross-CTA SMEM read" loading="lazy"
+        style="width:100%; min-width:720px; height:580px; border:1px solid var(--pst-color-border, #d0d0d0); border-radius:6px;"></iframe>
+</div>
+```
+*Interactive：每个 CTA 拥有 A 的一个 row slice 和 stored-B 的一个 row slice，然后通过 cluster（DSMEM）读取另一个 CTA 的 stored-B slice。`B.T` 之后，两个 stored-B slice 覆盖完整的 output-column span，因此这对 CTA 产生一个 256×256 output tile。*
 
-在 cluster 中，两个 CTA 的 SMEM 布局需要协调。A tile 在每个 CTA 中独立，B tile 由一个 CTA 加载并通过 cluster shared memory 对另一个 CTA 可见。
+**为什么 A 和 B 在 cluster 中分割**：要看到 256×256 tile 如何被分区，回顾本教程将 GEMM 存储为 `D = A @ B.T`，其中 stored B 的形状为 `N x K`。cluster 中有两个 CTA 时，分割很清晰：
 
-cluster 的关键是 `cta_group::2` 语义。当 TMA 或 MMA 使用 `cta_group=2` 时，hardware 知道两个 CTA 在合作，barrier 和 memory fence 需要跨越两个 CTA。
+- **A 垂直分割**：CTA-0 持有 A0（row 0-127），CTA-1 持有 A1（row 128-255）。堆叠：`[A0; A1]`（256 row）。
+- **Stored B 按 row 分割**：CTA-0 加载 B row 0-127，CTA-1 加载 B row 128-255。因为 math 使用 `B.T`，这两个 stored row slice 变为 logical right-hand operand 的两个 128-column slice。
+- 使用 `cta_group=2`，MMA hardware 通过跨 CTA shared memory access 从**两个** CTA 的 SMEM 读取 B，因此它看到完整的 logical output-column span。
+- 结果：两个 CTA 合作完成一个 256x256 output tile。每个 CTA 写入该 tile 的 128x256 row stripe。
+
+值得停下来看看为什么这是一个真正的 win 而不仅仅是 work 的 reshuffle。每个 CTA 仍然只加载 128×K 的 A 和 128×K 的 B，因此 cluster 整体预存约 2× 单个 CTA 的 operand，但它产生一个 256×256 tile，携带约 4× 128×128 tile 的 output FLOP。因此 MMA 每 staged-operand byte 做大约两倍 work，因为每个 CTA 的 B slice 通过 cooperative MMA 被另一个 CTA 的 A slice 复用。换句话说，arithmetic intensity 大约翻倍，这正是仍然 memory-leaning 的 kernel 需要的杠杆：End-to-End 表中的 ~2.2× speedup 来自于将相同的 byte 提供给更多 math。
+
+### Tile Address Calculation
+
+现在 cluster 是 unit of work，tile scheduler 也必须按 cluster tile 计数。它返回的每个 `(m_idx, n_idx)` 命名一个完整的 256×256 region，cluster 内的两个 CTA 在该 region 之间分割。将 cluster coordinate 翻译为每个 CTA 实际加载的 per-CTA slice 如下：
 
 ```python
-CTA_GROUP = 2
-MMA_N = BLK_N * CTA_GROUP   # 256
+m_st = (m_idx * CTA_GROUP + cbx) * BLK_M
+n_st = (n_idx * CTA_GROUP + cbx) * BLK_N
 ```
 
-TMA descriptor 需要 `cta_group=2` 来确保跨 CTA 的 memory visibility。MMA 指令同样使用 `cta_group=2`，使 Tensor Core 可以读取跨越两个 CTA 的 SMEM。
+两个 CTA 工作在*同一个* 256×256 cluster tile 上，单个 coordinate `cbx`（CTA 在 cluster 内的位置，0 或 1）选择出这个 CTA 在两个轴上的贡献。`m_st` 选择这个 CTA 拥有的 output row stripe，`n_st` 选择它馈入 cooperative MMA 的 stored-B slice，writeback 稍后发射 256-column output span 的两个 128-column half。还要注意 `num_m_tiles = M // 256` 和 `num_n_tiles = N // 256` 计数的是 cluster tile 而不是单个 CTA tile。
 
-### Cluster Synchronization
+乍一看 `cbx` 出现在 `m_st` 和 `n_st` 中，好像 row offset 以某种方式泄漏到了 column，但两个用法都是正确的，值得理清原因。在 writeback path 上，`cbx` 只属于 M 轴：每个 CTA 拥有独立的 128-row stripe（`m_st = (m_idx * CTA_GROUP + cbx) * BLK_M`，因此 CTA-0 写入 row `m_idx*256 .. +128`，CTA-1 写入接下来的 128），然而两个 CTA 都写入 cluster tile 的*完整* 256 output column。这正是 store 的 column 从 cluster 的 `n_idx` 派生（`n_st_epi = n_idx * 256 + no * 128`，没有 `cbx`）而不是从 per-CTA `n_st` 派生的原因。`n_st` 携带 `cbx` 的原因是每个 CTA 加载不同的 stored-B row slice 到 MMA：在那里，`cbx` 是 *load* offset，而不是 CTA 的 output-column offset。
 
-cluster 引入了新的同步需求。`cta_sync()` 只同步单个 CTA 内的 thread，而 `cluster_sync()` 同步 cluster 中的所有 CTA。在 TMEM dealloc 之前需要 `cluster_sync()`，以确保所有 CTA 都完成了对 TMEM 的使用。
+### Code Changes from Step 7
 
-barrier 也需要跨 CTA 信号。`mma2tma.arrive` 使用 `cta_mask=3`（两个 CTA 都到达），而不是 Step 7 中的 `cta_mask=0`（单 CTA）。
+与 Step 7 的 diff 有六个编辑，每个编码我们刚刚描述的 cluster contract 的一个部分：
+
+```python
+# 1. Cluster launch
+cbx, cby = T.cta_id_in_cluster([CTA_GROUP, 1])   # cbx = CTA index within cluster (0 or 1)
+
+# 2. Cooperative MMA（曾是 cta_group=1）
+Tx.gemm_async(..., cta_group=2)
+
+# 3. Cross-CTA shared memory access
+B_remote = T.ptx.map_shared_rank(Bsmem, cta_id=1)
+
+# 4. Cross-CTA barrier
+tma2mma_cta0 = T.decl_buffer(
+    [CTA_GROUP], "uint64",
+    data=T.ptx.map_shared_rank(tma2mma.ptr_to([0]), 0),
+    scope="shared"
+)
+
+# 5. mma2tma / mma2ld arrive 从 cta_mask=0（单 CTA，Step 7）
+#    变为 cta_mask=3（signal cluster 中的两个 CTA）
+mma2tma.arrive(mma_ps.stage, cta_group=CTA_GROUP, cta_mask=3)
+mma2ld.arrive(0, cta_group=CTA_GROUP, cta_mask=3)
+
+# 6. Cluster sync 在末尾替换 cta_sync
+T.cuda.cluster_sync()
+```
+
+
+### Cluster-Scope Changes
+
+这六个编辑都源于同一个转变：协作范围现在是 cluster 而不是单个 CTA。下面的要点说明了这种扩大在实践中意味着什么：每个 CTA 如何找到它的位置、cluster 在谁的 barrier 上协调、以及哪个 CTA 实际发射 cooperative MMA。
+
+- **Cluster CTA ID**：`cbx` 告诉每个 CTA 它在 cluster 中的位置（0 或 1）。CTA-0 处理 A row 0-127，CTA-1 处理 row 128-255。
+
+- **Remote barrier view**：在 cluster 中，每个 CTA 有自己的 SMEM 和自己的 barrier，这引出一个明显的问题：如果 CTA-1 需要等待 CTA-0 产生的东西，它实际接触谁的 barrier？答案是提名 CTA-0 的 barrier 为唯一的 coordination point，让 cluster 中的任何 CTA 都能到达它们。`map_shared_rank(tma2mma.ptr_to([0]), 0)` 返回指向 CTA-0 barrier 的 cluster-wide pointer，使用 TIRx wrapper `tma2mma.remote_view(0)`，从那时起每个 arrive 和 wait 都针对 CTA-0 的 copy。
+
+- **MMA 仅从 CTA-0 dispatch**：很容易将 `cta_group=2` 读作并行发射两个 engine，但事实并非如此。CTA-0 精确地发射一个 `tcgen05.mma`，hardware 然后驱动*单个 cooperative* MMA 跨越两个 CTA，从两个 SM 的 SMEM 读取 operand 并将 accumulator 写入两个 SM 的 TMEM。CTA-1 不发射任何 MMA。（每个 SM 只有一个 `tcgen05` engine，因此 `cta_group=2` 是一个 cross-SM MMA，而不是两个 engine 并排运行。）这就是代码用 `if cbx == 0:` 保护 MMA 的原因。
+
+- **Multicast arrive**：`tcgen05.commit(..., cta_group=2, cta_mask=3)` 仅由 CTA-0 发出但 signal 两个 CTA 的 barrier。`cta_mask=3`（二进制 `11`）意味着 CTA-0 和 CTA-1 都是 target。
+
+- **ld2mma init count**：`init(128 * CTA_GROUP)` --- 两个 CTA 的 writeback warpgroup（各 128 thread）arrive。
+
 
 **实现。**
 
@@ -366,15 +422,15 @@ def hgemm_v8(M, N, K):
 
     CTA_GROUP = 2
     BLK_M, BLK_N, BLK_K = 128, 128, 64
-    MMA_N = BLK_N * CTA_GROUP   # 256
+    MMA_M, MMA_N = 256, 256
     K_TILES = K // BLK_K
-    PIPE_DEPTH = 2
+    PIPE_DEPTH = 4
     WG_NUMBER = 2
-    F16_SIZE = 2
+    F16_SIZE = 2  # fp16
 
     A_layout = tma_shared_layout(a_type, SwizzleMode.SWIZZLE_128B_ATOM, (PIPE_DEPTH, BLK_M, BLK_K))
-    B_layout = tma_shared_layout(b_type, SwizzleMode.SWIZZLE_128B_ATOM, (PIPE_DEPTH, MMA_N, BLK_K))
-    D_layout = tma_shared_layout(d_type, SwizzleMode.SWIZZLE_128B_ATOM, (BLK_M, BLK_N))
+    B_layout = tma_shared_layout(b_type, SwizzleMode.SWIZZLE_128B_ATOM, (PIPE_DEPTH, BLK_N, BLK_K))
+    D_layout = tma_shared_layout(d_type, SwizzleMode.SWIZZLE_128B_ATOM, (BLK_M, 128))
 
     @T.prim_func
     def kernel(
@@ -383,8 +439,8 @@ def hgemm_v8(M, N, K):
         D: T.Buffer((M, N), d_type),
     ):
         T.device_entry()
-        bx = T.cta_id([SM_COUNT // CTA_GROUP])
-        cbx = T.cta_id_in_cluster([CTA_GROUP])
+        bx = T.cta_id([SM_COUNT])
+        cbx, cby = T.cta_id_in_cluster([CTA_GROUP, 1])
         wg_id = T.warpgroup_id([WG_NUMBER])
         warp_id = T.warp_id_in_wg([4])
         lane_id = T.lane_id([32])
@@ -398,17 +454,17 @@ def hgemm_v8(M, N, K):
         ld2mma  = MBarrier(pool, 1)
         pool.move_base_to(1024)
         Asmem = pool.alloc((PIPE_DEPTH, BLK_M, BLK_K), a_type, layout=A_layout)
-        Bsmem = pool.alloc((PIPE_DEPTH, MMA_N, BLK_K), b_type, layout=B_layout)
-        Dsmem = pool.alloc((BLK_M, BLK_N), d_type, layout=D_layout)
+        Bsmem = pool.alloc((PIPE_DEPTH, BLK_N, BLK_K), b_type, layout=B_layout)
+        Dsmem = pool.alloc((BLK_M, 128), d_type, layout=D_layout)
 
         # --- Barrier init ---
         tma2mma.init(1)
         mma2tma.init(1)
         mma2ld.init(1)
-        ld2mma.init(128 * CTA_GROUP)   # 两个 CTA 的 writeback thread 到达
+        ld2mma.init(128 * CTA_GROUP)  # 两个 CTA 的 writeback thread
         pool.commit()
 
-        # --- TMEM alloc (cooperative) ---
+        # --- TMEM alloc（cooperative）---
         if wg_id == 0:
             if warp_id == 0:
                 T.ptx.tcgen05.alloc(T.address_of(tmem_addr), n_cols=512, cta_group=CTA_GROUP)
@@ -420,24 +476,24 @@ def hgemm_v8(M, N, K):
             (128, 512), acc_type, scope="tmem", allocated_addr=tmem_addr[0],
             layout=TileLayout(S[(128, 512) : (1@TLane, 1@TCol)]))
 
-        # --- Tile scheduler (256x256 cluster tile) ---
+        # --- Tile scheduler（cluster tile）---
         tile_scheduler = ClusterPersistentScheduler2D(
             "ts", num_m_tiles=M // 256, num_n_tiles=N // 256,
             l2_group_size=8, num_clusters=SM_COUNT // CTA_GROUP)
-        tile_scheduler.init(bx)
+        tile_scheduler.init(bx // CTA_GROUP)
         m_idx = T.meta_var(tile_scheduler.m_idx)
         n_idx = T.meta_var(tile_scheduler.n_idx)
         m_st = T.meta_var((m_idx * CTA_GROUP + cbx) * BLK_M)
         n_st = T.meta_var((n_idx * CTA_GROUP + cbx) * BLK_N)
 
+        # --- Cross-CTA barrier view ---
         tma2mma_cta0 = tma2mma.remote_view(0)
 
         # =============================================
-        # Warpgroup 1: TMA Producer (warp 3) + MMA Consumer (warp 0)
+        # Warpgroup 1: TMA Producer（warp 3）+ MMA Consumer（warp 0）
         # =============================================
         if wg_id == 1:
             if warp_id == 3:
-                # === TMA Producer ===
                 tma_ps = PipelineState(PIPE_DEPTH, phase=1)
 
                 @T.inline
@@ -446,11 +502,10 @@ def hgemm_v8(M, N, K):
                                   A[m_st:m_st+BLK_M, k_offset:k_offset+BLK_K],
                                   dispatch="tma", cta_group=CTA_GROUP,
                                   mbar=tma2mma_cta0.ptr_to([tma_ps.stage]))
-                    if cbx == 0:
-                        Tx.copy_async(Bsmem[tma_ps.stage, :, :],
-                                      B[n_st:n_st+MMA_N, k_offset:k_offset+BLK_K],
-                                      dispatch="tma", cta_group=CTA_GROUP,
-                                      mbar=tma2mma_cta0.ptr_to([tma_ps.stage]))
+                    Tx.copy_async(Bsmem[tma_ps.stage, :, :],
+                                  B[n_st:n_st+BLK_N, k_offset:k_offset+BLK_K],
+                                  dispatch="tma", cta_group=CTA_GROUP,
+                                  mbar=tma2mma_cta0.ptr_to([tma_ps.stage]))
 
                 if T.filter(lane_id, T.ptx.elect_sync()):
                     while tile_scheduler.valid():
@@ -464,7 +519,6 @@ def hgemm_v8(M, N, K):
                         tile_scheduler.next_tile()
 
             elif warp_id == 0:
-                # === MMA Consumer ===
                 mma_ps = PipelineState(PIPE_DEPTH, phase=0)
                 ld_ps = PipelineState(1, phase=1)
 
@@ -488,38 +542,37 @@ def hgemm_v8(M, N, K):
                             tile_scheduler.next_tile()
 
         # =============================================
-        # Warpgroup 0: Writeback
+        # Warpgroup 0: Writeback（256 column 分为 2 x 128-column chunk）
         # =============================================
         elif wg_id == 0:
             wb_ps = PipelineState(1, phase=0)
-            reg_f16 = T.alloc_local((BLK_N,), d_type)
+            reg_f16 = T.alloc_local((128,), d_type)
 
             while tile_scheduler.valid():
                 mma2ld.wait(wb_ps.stage, wb_ps.phase)
                 wb_ps.advance()
+                T.ptx.tcgen05.fence.after_thread_sync()
 
-                # 读 TMEM -> register（warpgroup scope）
-                reg = T.alloc_local((BLK_N,), acc_type)
-                reg_wg = reg.view(128, BLK_N,
-                    layout=TileLayout(S[(128, BLK_N) : (1@tid_in_wg, 1)]))
-                col_st = T.meta_var(cbx * BLK_N)
-                Tx.wg.copy_async(reg_wg[:], tmem[:, col_st:col_st+BLK_N])
-                T.ptx.tcgen05.wait.ld()
+                for no in T.unroll(2):  # 2 chunk 各 128 column = 256 总计
+                    reg = T.alloc_local((128,), acc_type)
+                    reg_wg = reg.view(128, 128,
+                        layout=TileLayout(S[(128, 128) : (1@tid_in_wg, 1)]))
+                    Tx.wg.copy_async(reg_wg[:], tmem[:, no * 128:(no + 1) * 128])
+                    T.ptx.tcgen05.wait.ld()
+                    Tx.cast(reg_f16[:], reg[:])
+                    Tx.copy(Dsmem[warp_id * 32 + lane_id, :], reg_f16[:])
+                    T.ptx.fence.proxy_async("shared::cta")
+                    T.cuda.warpgroup_sync(10)
+                    if warp_id == 0:
+                        if lane_id == 0:
+                            n_st_epi = T.meta_var(n_idx * 256 + no * 128)
+                            Tx.copy_async(D[m_st:m_st+BLK_M, n_st_epi:n_st_epi+128],
+                                          Dsmem[:, :], dispatch="tma")
+                            T.ptx.cp_async.bulk.commit_group()
+                            T.ptx.cp_async.bulk.wait_group(0)
+                    T.cuda.warpgroup_sync(10)
 
-                ld2mma.arrive(0, cta_id=cbx, pred=True)
-
-                Tx.cast(reg_f16[:], reg[:])
-                Tx.copy(Dsmem[warp_id * 32 + lane_id, :], reg_f16[:])
-                T.ptx.fence.proxy_async("shared::cta")
-                T.cuda.warpgroup_sync(10)
-                if warp_id == 0:
-                    if lane_id == 0:
-                        Tx.copy_async(D[m_st:m_st+BLK_M, n_st:n_st+BLK_N],
-                                      Dsmem[:, :], dispatch="tma")
-                        T.ptx.cp_async.bulk.commit_group()
-                        T.ptx.cp_async.bulk.wait_group(0)
-                T.cuda.warpgroup_sync(10)
-
+                ld2mma.arrive(0, cta_id=0, pred=True)
                 tile_scheduler.next_tile()
 
         # --- Cleanup ---
@@ -531,27 +584,27 @@ def hgemm_v8(M, N, K):
     return kernel
 ```
 
-**2 个 CTA 的变化。**
+**2 CTA 的改变。**
 
 - `CTA_GROUP = 2`，`MMA_N = BLK_N * CTA_GROUP = 256`
 
-- `ld2mma.init(128 * CTA_GROUP)` --- 两个 CTA 的 writeback WG 到达
+- `ld2mma.init(128 * CTA_GROUP)` --- 两个 CTA 的 writeback WG arrive
 
 - TMA arrive byte count 包括两个 CTA：`CTA_GROUP * (BLK_M * BLK_K + BLK_N * BLK_K) * F16_SIZE`
 
 - `tcgen05.alloc` 和 `tcgen05.dealloc` 必须使用 `cta_group=2`
 
-- Writeback 将 256 输出列拆分为两个 128 列的 chunk --- 一次读取全部 256 个 TMEM 列超出 register 容量。Step 9 将 chunk 进一步缩小到 `EPI_N=64`
+- Writeback 将 256 output column 分为两个 128-column chunk --- 一次读取全部 256 TMEM column 超出 register capacity。Step 9 将 chunk 进一步缩小到 `EPI_N=64`
 
-- 末尾用 `cluster_sync()` 替换 `cta_sync()`（确保所有 CTA 在 TMEM dealloc 之前完成）
+- `cluster_sync()` 在末尾替换 `cta_sync()`（确保所有 CTA 在 TMEM dealloc 之前完成）
 
 所有额外的 arithmetic intensity 直接反映在 wall clock 上：Step 8 在 4096³ 时达到 **0.104 ms**，比同 size 下 Step 1 算法的 70 ms 快约 676 倍（见 End-to-End 表）。kernel 现在倾向于 compute-bound，这正是 Step 9 的设置，我们在 Step 9 中添加第二个 MMA consumer 以保持更多 Tensor Core work in flight。
 
-如果 Step 8 比 Step 7 *更慢*，罪魁祸首几乎总是新的 cluster contract 输入有误。首先检查三件事：TMA arrive byte count 是否为 `CTA_GROUP * (BLK_M*BLK_K + BLK_N*BLK_K) * F16_SIZE`；scheduler dimension 是否为 `num_m_tiles=M//256, num_n_tiles=N//256`（对应 256×256 cluster tile）；writeback 是否发起两次 TMA store，每个 128 列 chunk 一次，每次在 Dsmem 复用之前排空。
+如果 Step 8 比 Step 7 *更慢*，罪魁祸首几乎总是新的 cluster contract 输入有误。首先检查三件事：TMA arrive byte count 是否为 `CTA_GROUP * (BLK_M*BLK_K + BLK_N*BLK_K) * F16_SIZE`；scheduler dimension 是否为 `num_m_tiles=M//256, num_n_tiles=N//256`（对应 256×256 cluster tile）；writeback 是否发射两次 TMA store，每个 128-column chunk 一次，每次在 Dsmem 复用之前排空。
 
 ---
 
-cluster 提高了*跨* CTA 的 reuse。最后一步转向内部，通过给 producer 添加第二个 MMA consumer 来提高*每个 CTA 内*的计算密度。
+Cluster 提高了跨 CTA 的 reuse。最后一步转向内部，提高每个 CTA 内的计算密度，方法是为 producer 提供第二个 MMA consumer 以保持 fed。
 
 
 (chap_multi_consumer)=

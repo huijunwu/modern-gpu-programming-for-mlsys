@@ -5,7 +5,7 @@
 
 不要从重写 kernel 开始。首先确保 run 是 valid 的，然后 inspect 生成的 CUDA。排除 environment 和 compile-time issue 后，这些 kernel 中的 runtime failure 通常归结为 broken handoff：未初始化的 barrier、错误的 arrival count、role guard 内隐藏的 collective、stale barrier phase，或在 producer 使 write visible 之前 reuse storage。
 
-## Debugging Kernel 之前
+## Before Debugging the Kernel
 
 首先排除 runtime context：
 
@@ -22,7 +22,7 @@ python -c "import torch; print(torch.cuda.get_device_name(), torch.cuda.get_devi
 2. 如果 compilation 失败，在读取 runtime synchronization code 之前检查安装的 API、target、`dispatch=` 和 buffer scope。
 3. 保存 `inspect_source("cuda")` output。在重新读取 Python 之前，搜索其中的 role guard、`mbarrier_init`、`tcgen05`、`cp.async.bulk.tensor` 和 `cta_sync()`。
 4. 为失败的 kernel path 编写 roles / storage / handoff / lifetime table。
-5. 将生成的 CUDA 与那个 table 检查：barrier init 在 role branch 之前、期望的 TMA producer、MMA issuer、writeback group，且 warpgroup-only branch 内无 CTA-wide collective。
+5. 将生成的 CUDA 与那个 table 对照检查：barrier init 在 role branch 之前、期望的 TMA producer、MMA issuer、writeback group，且 warpgroup-only branch 内无 CTA-wide collective。
 6. 将 run 分类为 deadlock、crash、wrong result 或 correct-but-slow，然后使用下面匹配的 section。
 7. 一次改变一个 handoff：init count、arrive/wait phase、role guard、fence、TMA store drain、TMEM alloc/dealloc 或 tile-scheduler advance。
 8. 在测量 performance 之前重新运行 correctness。
@@ -92,7 +92,7 @@ print(cuda_source)
 | `mbarrier_init` | Barrier initialization 存在且出现在 role branch 之前 |
 | `tcgen05` | Tensor Core path 已生成 |
 | `cp.async.bulk.tensor` | Copy lowered 到 TMA |
-| `cta_sync();` | CTA-wide barrier；它必须在 `wg_id` branch 内部 |
+| `cta_sync();` | CTA-wide barrier；它必须**不**在 `wg_id` branch 内部 |
 
 ## Step 7 Reference Skeleton
 
